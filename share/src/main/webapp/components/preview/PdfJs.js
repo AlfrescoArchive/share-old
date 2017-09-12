@@ -34,6 +34,7 @@
  * @author Peter Lofgren Loftux AB
  * @author Will Abson
  * @author Kevin Roast
+ * @author Younes Regaieg
  */
 
 (function()
@@ -180,6 +181,16 @@
           * @default "false"
           */
          disableTextLayer : "false",
+
+          /**
+           * Whether annotation overlays on pages should be disabled. Annotations allow users to click links
+           * from their documents within the preview but reduce rendering performance.
+           *
+           * @property disableAnnotationLayer
+           * @type String
+           * @default "false"
+           */
+          disableAnnotationLayer : "false",
 
          /**
           * Whether to use HTML5 browser storage to persist the page number and zoom level of previously-viewed documents
@@ -1908,7 +1919,7 @@
       this.textLayerDiv = null;
       this.config = config || {};
       this.textContent = null;
-      this.textLayerDiv = null;
+      this.annotationLayerDiv = null;
       this.pdfJsPlugin = pdfJsPlugin;
    }
 
@@ -1992,6 +2003,16 @@
          this.textLayerDiv = textLayerDiv;
          this.textLayer = textLayerDiv ? new TextLayerBuilder(textLayerDiv, this.id - 1, this.pdfJsPlugin, viewport) : null;
 
+         var annotationLayerDiv = null;
+         if (!this.parent.config.disableAnnotationLayer)
+         {
+            annotationLayerDiv = document.createElement('div');
+            annotationLayerDiv.className = 'annotationLayer';
+            this.container.appendChild(annotationLayerDiv);
+         }
+         this.annotationLayerDiv = annotationLayerDiv;
+         this.annotationLayer = annotationLayerDiv ? new AnnotationLayerBuilder(annotationLayerDiv) : null;
+
          var content = this.content,
              view = content.view,
              ctx = canvas.getContext('2d');
@@ -2000,7 +2021,8 @@
          var renderContext = {
             canvasContext : ctx,
             viewport : viewport,
-            textLayer : this.textLayer
+            textLayer : this.textLayer,
+            annotationLayer: this.annotationLayer
          };
          
          var startTime = 0;
@@ -2019,7 +2041,12 @@
             {
                this.getTextContent().then(setTextFn);
             }
-            
+
+            if (this.annotationLayer)
+            {
+               this.annotationLayer.render(this, this.content, viewport);
+            }
+
             // Hide the loading icon and make the canvas visible again
             if (this.loadingIconDiv)
             {
@@ -2946,6 +2973,56 @@ var TextLayerBuilder = function textLayerBuilder(textLayerDiv, pageIdx, pdfJsPlu
   };
 };
 
+/**
+* Copied from pdf.js viewer and adjusted.
+*/
+/**
+* @class
+*/
+var AnnotationLayerBuilder = function annotationLayerBuilder(annotationLayerDiv) {
+
+  this.annotationLayerDiv = annotationLayerDiv;
+
+
+      /**
+       * @param {PageViewport} viewport
+       * @param {string} intent (default value is 'display')
+       */
+      this.render = function AnnotationLayerBuilder_render(self, pdfPage, viewport) {
+          var intent = 'display';
+          self.viewport = viewport;
+          var parameters = {
+              intent: (intent === undefined ? 'display' : intent),
+          };
+
+          pdfPage.getAnnotations(parameters).then(function (annotations) {
+              var viewport = self.viewport.clone({ dontFlip: true });
+              parameters = {
+                  viewport: viewport,
+                  div: self.annotationLayerDiv,
+                  annotations: annotations,
+                  page: pdfPage,
+                  linkService: self.linkService,
+                  downloadManager: self.downloadManager
+              };
+
+              if (self.annotationLayerDiv) {
+                  // If an annotationLayer already exists, refresh its children's
+                  // transformation matrices.
+                  PDFJS.AnnotationLayer.render(parameters);
+              } else {
+                  console.warn("Annotation DIV does not exist");
+              }
+          });
+      };
+
+      this.hide = function AnnotationLayerBuilder_hide() {
+          if (!this.annotationLayerDiv) {
+              return;
+          }
+          this.annotationLayerDiv.setAttribute('hidden', 'true');
+      }
+};
 
 /**
  * PDFFindController - copied from pdf.js project, file viewer.js Changes
